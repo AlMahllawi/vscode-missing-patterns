@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { window, commands, ExtensionContext } from 'vscode';
+import * as path from 'path';
 
 async function openInUntitled(content: string, language?: string) {
     const document = await vscode.workspace.openTextDocument({
@@ -14,13 +15,20 @@ async function userSelectTab(
     docs: readonly vscode.TextDocument[],
     label: string
 ): Promise<{ lines: string[]; text: string } | null> {
-    const filename = await window.showQuickPick(filenames, {
+    const items = filenames.map((f, i) => {
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(docs[i].uri);
+        const description = workspaceFolder
+            ? path.relative(workspaceFolder.uri.fsPath, f)
+            : f;
+        return { label: path.basename(f), description, index: i };
+    });
+    const picked = await window.showQuickPick(items, {
         placeHolder: `Choose the ${label} tab`,
     });
-    if (filename === undefined) {
+    if (picked === undefined) {
         return null;
     }
-    const doc = docs[filenames.indexOf(filename)];
+    const doc = docs[picked.index];
     const text = doc.getText();
     const lines = text.split('\n');
     return { lines, text };
@@ -28,7 +36,9 @@ async function userSelectTab(
 
 export function activate(context: ExtensionContext) {
     context.subscriptions.push(commands.registerCommand('grep-filter.findMissingPatterns', async () => {
-        const docs = vscode.workspace.textDocuments;
+        const docs = vscode.workspace.textDocuments.filter(doc =>
+            doc.uri.scheme === 'file' || doc.uri.scheme === 'untitled'
+        );
         const filenames = docs.map(doc => doc.fileName);
 
         const patternsResult = await userSelectTab(filenames, docs, 'patterns (step 1/2)');
